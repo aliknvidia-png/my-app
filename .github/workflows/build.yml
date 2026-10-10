@@ -1,0 +1,353 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Create project files
+        run: |
+          mkdir -p app/src/main/java/com/example/macrogen app/src/main/assets
+          cat > settings.gradle <<'EOFFILE'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = 'MacroGen'
+          include ':app'
+          EOFFILE
+          cat > build.gradle <<'EOFFILE'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          EOFFILE
+          cat > gradle.properties <<'EOFFILE'
+          org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+          EOFFILE
+          cat > app/build.gradle <<'EOFFILE'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.example.macrogen'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId 'com.example.macrogen'
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOFFILE
+          cat > app/src/main/AndroidManifest.xml <<'EOFFILE'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:label="Excel Macro"
+                  android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOFFILE
+          cat > app/src/main/java/com/example/macrogen/MainActivity.java <<'EOFFILE'
+          package com.example.macrogen;
+
+          import android.app.Activity;
+          import android.content.ClipData;
+          import android.content.ClipboardManager;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.os.Bundle;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              private WebView web;
+
+              public class Bridge {
+                  @JavascriptInterface
+                  public void copy(String text) {
+                      ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                      cm.setPrimaryClip(ClipData.newPlainText("vba", text));
+                  }
+
+                  @JavascriptInterface
+                  public void share(String text) {
+                      Intent i = new Intent(Intent.ACTION_SEND);
+                      i.setType("text/plain");
+                      i.putExtra(Intent.EXTRA_TEXT, text);
+                      startActivity(Intent.createChooser(i, "Send"));
+                  }
+              }
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  web = new WebView(this);
+                  setContentView(web);
+                  WebSettings s = web.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  web.addJavascriptInterface(new Bridge(), "Android");
+                  web.setWebViewClient(new WebViewClient());
+                  web.loadUrl("file:///android_asset/index.html");
+              }
+          }
+          EOFFILE
+          cat > app/src/main/assets/index.html <<'EOFFILE'
+          <!DOCTYPE html>
+          <html lang="ru">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Excel Macro</title>
+          <style>
+          :root{--ink:#14211a;--paper:#f6f7f3;--line:#d6dbd0;--green:#1d6f42;--green2:#155433;--code:#0f1f17;--mint:#b9f0cf;--muted:#5b6b61}
+          *{box-sizing:border-box}
+          html,body{margin:0;background:var(--paper);color:var(--ink);font-family:Roboto,"Segoe UI",system-ui,sans-serif;font-size:16px;line-height:1.45}
+          header{background:var(--green);color:#fff;padding:22px 18px 18px}
+          header h1{margin:0;font-size:24px;font-weight:700;letter-spacing:-.01em}
+          header p{margin:4px 0 0;color:#cfe8da;font-size:14px}
+          main{padding:18px;max-width:640px;margin:0 auto}
+          label{display:block;font-weight:600;margin:16px 0 6px;font-size:15px}
+          select,input{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+          select:focus,input:focus,button:focus-visible,textarea:focus{outline:3px solid #7fc5a0;outline-offset:1px}
+          .desc{color:var(--muted);font-size:14px;margin:8px 0 0}
+          .row{display:flex;gap:10px;margin-top:14px}
+          button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:13px 16px;cursor:pointer}
+          .go{background:var(--green);color:#fff;width:100%;margin-top:20px}
+          .go:active{background:var(--green2)}
+          .sec{background:#fff;color:var(--green);border:1px solid var(--green);flex:1}
+          .codebox{margin-top:22px;border-radius:10px;overflow:hidden;background:var(--code)}
+          .bar{padding:8px 14px;background:#1b3426;color:#8fb7a0;font-size:13px}
+          textarea{display:block;width:100%;min-height:260px;border:0;background:var(--code);color:var(--mint);font:13px/1.5 "Roboto Mono",Consolas,monospace;padding:14px;resize:vertical;white-space:pre;overflow:auto}
+          .hint{margin-top:22px;border-left:4px solid var(--green);padding:4px 0 4px 14px;font-size:14px;color:var(--muted)}
+          .hint b{color:var(--ink)}
+          .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+          .toast.on{opacity:1}
+          </style>
+          </head>
+          <body>
+          <header><h1>Excel Macro</h1><p>Готовый VBA-код за минуту</p></header>
+          <main>
+          <label for="type">Что должен делать макрос</label>
+          <select id="type"></select>
+          <p class="desc" id="desc"></p>
+          <div id="params"></div>
+          <button class="go" id="gen">Создать код</button>
+          <div class="codebox">
+          <div class="bar">VBA-код</div>
+          <textarea id="out" readonly placeholder="Здесь появится код макроса"></textarea>
+          </div>
+          <div class="row">
+          <button class="sec" id="copy">Копировать</button>
+          <button class="sec" id="share">Отправить</button>
+          </div>
+          <div class="hint"><b>Как вставить в Excel (на компьютере):</b> Alt+F11, затем Insert, Module. Вставьте код и нажмите F5. Файл сохраните как .xlsm. В Excel на телефоне макросы не запускаются.</div>
+          </main>
+          <div class="toast" id="toast"></div>
+          <script>
+          function q(s){return String(s).replace(/"/g,'""');}
+          function col(s){s=String(s).trim().toUpperCase();return /^[A-Z]{1,3}$/.test(s)?s:'A';}
+          function num(s){var n=0,i;s=col(s);for(i=0;i<s.length;i++){n=n*26+s.charCodeAt(i)-64;}return n;}
+          function L(a){return a.join('\n');}
+          var COLORS={yellow:['Жёлтый','255, 255, 0'],red:['Красный','255, 0, 0'],green:['Зелёный','0, 176, 80'],blue:['Голубой','0, 176, 240']};
+          var COLOROPTS=[['yellow','Жёлтый'],['red','Красный'],['green','Зелёный'],['blue','Голубой']];
+          var YESNO=[['yes','Да'],['no','Нет']];
+          var M=[
+          {n:'Удалить пустые строки',d:'Удаляет полностью пустые строки на активном листе.',p:[],
+          g:function(v){return L([
+          'Sub DeleteEmptyRows()',
+          '    Dim i As Long, lastRow As Long',
+          '    lastRow = ActiveSheet.UsedRange.Row + ActiveSheet.UsedRange.Rows.Count - 1',
+          '    Application.ScreenUpdating = False',
+          '    For i = lastRow To 1 Step -1',
+          '        If Application.WorksheetFunction.CountA(Rows(i)) = 0 Then Rows(i).Delete',
+          '    Next i',
+          '    Application.ScreenUpdating = True',
+          'End Sub']);}},
+          {n:'Удалить дубликаты',d:'Оставляет по одной строке для каждого значения в выбранном столбце.',
+          p:[{id:'col',l:'Столбец (буква)',v:'A'},{id:'hdr',l:'Первая строка — заголовок',t:'s',o:YESNO,v:'yes'}],
+          g:function(v){return L([
+          'Sub RemoveDuplicateRows()',
+          '    ActiveSheet.UsedRange.RemoveDuplicates Columns:=' + num(v.col) + ', Header:=' + (v.hdr==='yes'?'xlYes':'xlNo'),
+          'End Sub']);}},
+          {n:'Выделить ячейки с текстом',d:'Закрашивает ячейки столбца, в которых есть нужный текст.',
+          p:[{id:'col',l:'Столбец (буква)',v:'A'},{id:'txt',l:'Искомый текст',v:'Срочно'},{id:'clr',l:'Цвет',t:'s',o:COLOROPTS,v:'yellow'}],
+          g:function(v){return L([
+          'Sub HighlightCells()',
+          '    Dim c As Range, rng As Range',
+          '    Set rng = Intersect(ActiveSheet.UsedRange, ActiveSheet.Columns("' + col(v.col) + '"))',
+          '    If rng Is Nothing Then Exit Sub',
+          '    For Each c In rng.Cells',
+          '        If InStr(1, CStr(c.Value), "' + q(v.txt) + '", vbTextCompare) > 0 Then',
+          '            c.Interior.Color = RGB(' + COLORS[v.clr][1] + ')',
+          '        End If',
+          '    Next c',
+          'End Sub']);}},
+          {n:'Объединить все листы в один',d:'Копирует данные всех листов друг под другом на новый лист.',
+          p:[{id:'nm',l:'Название нового листа',v:'Итог'}],
+          g:function(v){return L([
+          'Sub MergeSheets()',
+          '    Dim ws As Worksheet, dest As Worksheet, destRow As Long',
+          '    Application.ScreenUpdating = False',
+          '    Set dest = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))',
+          '    dest.Name = "' + q(v.nm) + '"',
+          '    destRow = 1',
+          '    For Each ws In ThisWorkbook.Worksheets',
+          '        If ws.Name <> dest.Name Then',
+          '            If Application.WorksheetFunction.CountA(ws.Cells) > 0 Then',
+          '                ws.UsedRange.Copy dest.Cells(destRow, 1)',
+          '                destRow = destRow + ws.UsedRange.Rows.Count',
+          '            End If',
+          '        End If',
+          '    Next ws',
+          '    Application.CutCopyMode = False',
+          '    Application.ScreenUpdating = True',
+          'End Sub']);}},
+          {n:'Сохранить каждый лист как PDF',d:'Создаёт отдельный PDF для каждого листа в папке книги. Книгу нужно сохранить заранее.',p:[],
+          g:function(v){return L([
+          'Sub ExportSheetsToPDF()',
+          '    Dim ws As Worksheet',
+          '    For Each ws In ThisWorkbook.Worksheets',
+          '        ws.ExportAsFixedFormat Type:=xlTypePDF, _',
+          '            Filename:=ThisWorkbook.Path & Application.PathSeparator & ws.Name & ".pdf"',
+          '    Next ws',
+          'End Sub']);}},
+          {n:'Автоширина столбцов',d:'Подгоняет ширину столбцов под содержимое на всех листах.',p:[],
+          g:function(v){return L([
+          'Sub AutoFitAllSheets()',
+          '    Dim ws As Worksheet',
+          '    For Each ws In ThisWorkbook.Worksheets',
+          '        ws.UsedRange.Columns.AutoFit',
+          '    Next ws',
+          'End Sub']);}},
+          {n:'Сортировка по столбцу',d:'Сортирует данные активного листа по выбранному столбцу.',
+          p:[{id:'col',l:'Столбец (буква)',v:'A'},{id:'ord',l:'Порядок',t:'s',o:[['asc','По возрастанию'],['desc','По убыванию']],v:'asc'},{id:'hdr',l:'Первая строка — заголовок',t:'s',o:YESNO,v:'yes'}],
+          g:function(v){return L([
+          'Sub SortByColumn()',
+          '    With ActiveSheet',
+          '        .UsedRange.Sort Key1:=.Range("' + col(v.col) + '1"), _',
+          '            Order1:=' + (v.ord==='asc'?'xlAscending':'xlDescending') + ', _',
+          '            Header:=' + (v.hdr==='yes'?'xlYes':'xlNo'),
+          '    End With',
+          'End Sub']);}},
+          {n:'Найти и заменить',d:'Заменяет один текст на другой.',
+          p:[{id:'a',l:'Найти',v:''},{id:'b',l:'Заменить на',v:''},{id:'all',l:'На всех листах',t:'s',o:YESNO,v:'yes'}],
+          g:function(v){
+          var r='What:="' + q(v.a) + '", Replacement:="' + q(v.b) + '", LookAt:=xlPart, MatchCase:=False';
+          if(v.all==='yes'){return L([
+          'Sub ReplaceText()',
+          '    Dim ws As Worksheet',
+          '    For Each ws In ThisWorkbook.Worksheets',
+          '        ws.Cells.Replace ' + r,
+          '    Next ws',
+          'End Sub']);}
+          return L([
+          'Sub ReplaceText()',
+          '    ActiveSheet.Cells.Replace ' + r,
+          'End Sub']);}},
+          {n:'Пронумеровать строки',d:'Записывает номера 1, 2, 3 и далее в выбранный столбец.',
+          p:[{id:'col',l:'Столбец для номеров (буква)',v:'A'},{id:'st',l:'Первая строка с данными',v:'2'}],
+          g:function(v){var st=parseInt(v.st,10);if(!(st>0)){st=1;}return L([
+          'Sub NumberRows()',
+          '    Dim i As Long, lastRow As Long',
+          '    lastRow = ActiveSheet.UsedRange.Row + ActiveSheet.UsedRange.Rows.Count - 1',
+          '    For i = ' + st + ' To lastRow',
+          '        Cells(i, "' + col(v.col) + '").Value = i - ' + (st-1),
+          '    Next i',
+          'End Sub']);}},
+          {n:'Формулы в значения',d:'Заменяет формулы на листе их результатами.',p:[],
+          g:function(v){return L([
+          'Sub FormulasToValues()',
+          '    With ActiveSheet.UsedRange',
+          '        .Value = .Value',
+          '    End With',
+          'End Sub']);}}
+          ];
+          var $=function(id){return document.getElementById(id);};
+          var sel=$('type'),out=$('out'),tm;
+          M.forEach(function(m,i){var o=document.createElement('option');o.value=i;o.textContent=m.n;sel.appendChild(o);});
+          function toast(t){var e=$('toast');e.textContent=t;e.className='toast on';clearTimeout(tm);tm=setTimeout(function(){e.className='toast';},1600);}
+          function render(){
+          var m=M[sel.value],h='';
+          $('desc').textContent=m.d;
+          m.p.forEach(function(p){
+          h+='<label for="f_'+p.id+'">'+p.l+'</label>';
+          if(p.t==='s'){h+='<select id="f_'+p.id+'">';p.o.forEach(function(o){h+='<option value="'+o[0]+'"'+(o[0]===p.v?' selected':'')+'>'+o[1]+'</option>';});h+='</select>';}
+          else{h+='<input id="f_'+p.id+'" value="'+p.v+'" autocomplete="off">';}
+          });
+          $('params').innerHTML=h;out.value='';
+          }
+          function gen(){
+          var m=M[sel.value],v={};
+          m.p.forEach(function(p){v[p.id]=$('f_'+p.id).value;});
+          out.value=m.g(v);
+          }
+          function copy(){
+          var t=out.value;if(!t){toast('Сначала создайте код');return;}
+          if(window.Android){Android.copy(t);}else{out.select();document.execCommand('copy');}
+          toast('Скопировано');
+          }
+          function share(){
+          var t=out.value;if(!t){toast('Сначала создайте код');return;}
+          if(window.Android){Android.share(t);}else{copy();}
+          }
+          sel.addEventListener('change',render);
+          $('gen').addEventListener('click',gen);
+          $('copy').addEventListener('click',copy);
+          $('share').addEventListener('click',share);
+          render();
+          </script>
+          </body>
+          </html>
+          EOFFILE
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ExcelMacro-APK
+
+          path: app/build/outputs/apk/debug/app-debug.apk
